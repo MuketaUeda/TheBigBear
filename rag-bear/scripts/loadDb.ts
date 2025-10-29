@@ -36,9 +36,11 @@ async function loadDocuments() {
   
     // Split the documents into chunks
     const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 1000,
-      chunkOverlap: 200,
+      chunkSize: 800,
+      chunkOverlap: 170,
     });
+
+    const collection = db.collection(ASTRA_DB_COLLECTION!);
   
     // Load the documents
     for (const item of bearData) {
@@ -47,17 +49,29 @@ async function loadDocuments() {
       try {
         const loader = new PDFLoader(item.path);
         const docs = await loader.load();
-        
         const chunks = await splitter.splitDocuments(docs);
         console.log(`Divided into ${chunks.length} chunks`);
-        
-        const collection = db.collection(ASTRA_DB_COLLECTION!);
-        
+        const existingChunks = await collection.find({
+          source: item.path,
+          type: "pdf"
+        });
+        // Count the existing chunks
+        let existingChunksCount = 0;
+        for await (const chunk of existingChunks) {
+          existingChunksCount++;
+        }
+        // If the document already exists, skip it
+        if (existingChunksCount > 0) {
+          console.log(`${item.path} already has ${existingChunksCount} chunks. Skipping...`);
+          continue;
+        }
+        // If the document does not exist, insert the chunks
+        console.log(`${item.path} not duplicated. Inserting ${chunks.length} chunks...`);
+    
         // Save directly to Astra DB
         for (const chunk of chunks) {
-          
           const documentToInsert = {
-            text: chunk.pageContent, 
+            $vectorize: chunk.pageContent, 
             ...chunk.metadata, 
             source: item.path,
             type: "pdf"
