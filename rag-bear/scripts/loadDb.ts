@@ -62,7 +62,7 @@ async function loadDocuments() {
         }
         // If the document already exists, skip it
         if (existingChunksCount > 0) {
-          console.log(`${item.path} already has ${existingChunksCount} chunks. Skipping...`);
+          console.log(`${item.path} is already in the database. Skipping...`);
           continue;
         }
         // If the document does not exist, insert the chunks
@@ -85,7 +85,6 @@ async function loadDocuments() {
         console.error(`❌ Error loading ${item.path}:`, error);
       }
     }
-  
     console.log("Loading process completed.");
   }
 
