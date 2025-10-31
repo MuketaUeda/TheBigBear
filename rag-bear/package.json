@@ -22,7 +22,8 @@
     "pdf-parse": "^1.1.1",
     "puppeteer": "^23.0.0",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@types/node": "^20",
