@@ -71,6 +71,7 @@ async function loadDocuments() {
         // Save directly to Astra DB
         for (const chunk of chunks) {
           const documentToInsert = {
+            content: chunk.pageContent,
             $vectorize: chunk.pageContent, 
             ...chunk.metadata, 
             source: item.path,
