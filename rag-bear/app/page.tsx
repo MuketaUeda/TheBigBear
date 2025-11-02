@@ -7,7 +7,7 @@ import LoadingBubble from "./components/LoadingBubble"
 import React from "react"
 
 const Home = () => {
-    const { append, messages, input, handleInputChange, handleSubmit, status } = useChat({
+    const { append, messages, input, handleInputChange, handleSubmit, status, setMessages } = useChat({
         api: '/api/chat',
         onError: (error) => {
             console.error("❌ Erro no chat:", error)
@@ -16,33 +16,54 @@ const Home = () => {
     
     const noMessages = !messages || messages.length === 0
 
+    const resetChat = () => {
+        setMessages([])
+    }
+
     return (
-        <main>
-            <Image src={logo} width={250} alt="O Ursao Logo" />
-            <section className={noMessages ? "" : "populated"}>
-                {noMessages ? (
-                    <>
-                    <p className="starter-text">
-                        Sou o Ursão, pode perguntar qualquer dúvida sobre a Oktoberlim!
-                    </p>
-                    <br/>
-                    </>
-                ) : (
-                    <>
-                    {messages.map((message, index) => (
-                        <Bubble key={message.id || `message-${index}`} message={message}/>
-                    ))}
-                    {status === "submitted" || status === "streaming" ? (
-                        <LoadingBubble/>
-                    ) : null}
-                    </>
-                )}
-            </section>
+        <>
+            <aside className="sidebar">
+                <Image src={logo} width={150} alt="O Ursao Logo" />
+                <button 
+                    onClick={resetChat}
+                    className="reset-button"
+                    title="Reiniciar chat"
+                >
+                    <i className="fas fa-repeat"></i>
+                    <span>Limpar chat</span>
+                </button>
+                <p className="sidebar-text">
+                            Sou o Ursão, pode perguntar qualquer dúvida sobre a Oktoberlim!
+                            <br />
+                            Você pode perguntar sobre a Oktoberlim, Fornecedores, Áreas, Contratos e tudo mais que estiver relacionado a festa.
+                </p>
+            </aside>
+            
+            <main>
+                <section className={noMessages ? "" : "populated"}>
+                    {noMessages ? (
+                        <p className="starter-text">
+                            Olá como posso ajudar?
+                        </p>
+                    ) : (
+                        <>
+                            {messages.map((message, index) => (
+                                <Bubble key={message.id || `message-${index}`} message={message}/>
+                            ))}
+                            {status === "submitted" || status === "streaming" ? (
+                                <LoadingBubble/>
+                            ) : null}
+                        </>
+                    )}
+                </section>
                 <form onSubmit={handleSubmit}>
                     <input className="question-box" onChange={handleInputChange} value={input} placeholder="Pergunte algo..."/>
-                    <input type="submit" value="Enviar" disabled={status === "submitted" || status === "streaming"}/>
+                    <button type="submit" disabled={status === "submitted" || status === "streaming"}>
+                        <i className="fas fa-paper-plane"></i>
+                    </button>
                 </form>
-        </main>
+            </main>
+        </>
     )
 }
 

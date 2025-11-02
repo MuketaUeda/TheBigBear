@@ -1,122 +1,210 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
 * {
-    font-family: Verdana, Tahoma, sans-serif;
+    font-family: 'Roboto', Tahoma, sans-serif;
 }
 
-body{
+body {
     margin: 0;
     padding: 0;
     display: flex;
-    justify-content: center;
-    align-items: center;
     height: 100vh;
     background-color: #000000;
 }
 
-main{
-    width: 80vw;
-    height: 80vh;
-    background: linear-gradient(to bottom, #caa16f, #d5c7ac);
-    border-radius: 15px;
+.sidebar {
+    width: 250px;
+    background-color: #caa16f;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    flex-direction: column;
-    justify-content: space-between;
     padding: 20px;
-    text-align: center;
-    color: #383838;
+    gap: 20px;
+    position: relative;
 }
 
-section{
-    width: 100%;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-
-section.populated{
-    height: 100%;
+.reset-button {
+    width: auto;
+    min-width: 120px;
+    height: 45px;
+    padding: 0 15px;
+    border-radius: 8px;
+    background-color: #663d0e;
+    color: #d6b86d;
+    border: none;
+    font-size: 15px;
+    cursor: pointer;
     display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scroll-behavior: smooth;
-    scrollbar-color: #828282 transparent;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: #959da533 0 8px 24px;
 }
 
-.starter-text{
-    padding: 0 80px;
+.reset-button:hover {
+    background-color: #925d21;
+    transform: scale(1.05);
+    box-shadow: #959da533 0 12px 32px;
+}
+
+.reset-button:active {
+    transform: scale(0.95);
+}
+
+.sidebar img {
+    width: 150px;
+    height: auto;
+}
+
+.sidebar-text {
+    text-align: center;
     font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
     font-size: 20px;
+    color: #383838;
+    padding: 10px 0px 20px 20px;
+    margin: 20px auto 0px auto;
 }
 
-form{
-    height: 50px;
-    width: 100%;
+main {
+    flex: 1;
     display: flex;
-    border-top: #828282 solid 2px;
-    padding-top: 20px;
-    border-radius: 0 0 10px 10px;
-    overflow: hidden;
+    flex-direction: column;
+    background-color: #caa16f;
+    position: relative;
 }
 
-input.question-box{
-    width: 85%;
-    padding: 10px;
-    font-size: 15px;
+section {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -ms-overflow-style: none;
+}
+
+section::-webkit-scrollbar {
+    display: none;
+}
+
+.starter-text {
+    text-align: center;
+    font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    font-size: 20px;
+    color: #51300c;
+    padding: 0 20px;
+    margin: 0;
+}
+
+section.populated {
+    display: block;
+    align-items: unset;
+    justify-content: unset;
+    scroll-behavior: smooth;
+}
+
+form {
+    height: 70px;
+    display: flex;
+    gap: 10px;
+    padding: 10px 20px 10px 0px;
+    background: transparent;
+    flex-shrink: 0;
+    position: relative;
+}
+
+input.question-box {
+    flex: 1;
+    padding: 10px 50px 10px 15px;
+    font-size: 20px;
     color: #383838;
     border: none;
+    border-radius: 8px;
+    background-color: #b99e7e;
 }
 
-input[type="submit"]{
-    width: 15%;
-    padding: 10px;
-    font-size: 15px;
+button[type="submit"] {
+    position: absolute;
+    right: 25px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    padding: 0;
     border: none;
-    color: #fff;
-    background-color: #663d0e;
+    color: #000000;
+    background-color: transparent;
+    cursor: pointer;
+    border-radius: 0;
+    transition: 0.3s;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-input:focus{
+button[type="submit"]:hover {
+    color: #9c6b21;
+}
+
+button[type="submit"]:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+input:focus {
     outline: none;
 }
 
-.bubble{
-    margin: 8px;
-    padding: 8px;
-    font-size: 15px;
+.bubble {
+    margin: 10px 0;
+    padding: 12px;
+    font-size: 20px;
     border: none;
     color: #383838;
     box-shadow: #959da533 0 8px 24px;
-    width: 80%;
+    width: fit-content;
+    max-width: 80%;
     text-align: left;
+    border-radius: 12px;
 }
 
-.bubble.user{
+.bubble.user {
     border-radius: 20px 20px 0 20px;
-    background-color: #e0f5ff;
+    background-color: #e4e1de;
     margin-left: auto;
 }
 
-.bubble.assistant{
+.bubble.assistant {
     border-radius: 20px 20px 20px 0;
-    background-color: #dce7ff;
+    background-color: #dbc9b2;
 }
 
-.loader{
+.loader {
     margin: 10px;
     width: 60px;
     aspect-ratio: 4;
     background:
-    no-repeat radial-gradient(circle closest-side, #383838 90%, #0000) 0% 50%,
-    no-repeat radial-gradient(circle closest-side, #383838 90%, #0000) 50% 50%,
-    no-repeat radial-gradient(circle closest-side, #383838 90%, #0000) 100% 50%;
+        no-repeat radial-gradient(circle closest-side, #383838 90%, #0000) 0% 50%,
+        no-repeat radial-gradient(circle closest-side, #383838 90%, #0000) 50% 50%,
+        no-repeat radial-gradient(circle closest-side, #383838 90%, #0000) 100% 50%;
     background-size: calc(100% / 3) 100%;
     animation: loading 1s infinite linear;
 }
 
-@keyframes loading{
-    33% {background-size: calc(100% / 3) 0%, calc(100% / 3) 100%, calc(100% / 3) 100%;}
-    50% {background-size: calc(100% / 3) 100%, calc(100% / 3) 0%, calc(100% / 3) 100%;}
-    66% {background-size: calc(100% / 3) 100%, calc(100% / 3) 100%, calc(100% / 3) 0%;}
+@keyframes loading {
+    33% {
+        background-size: calc(100% / 3) 0%, calc(100% / 3) 100%, calc(100% / 3) 100%;
+    }
+
+    50% {
+        background-size: calc(100% / 3) 100%, calc(100% / 3) 0%, calc(100% / 3) 100%;
+    }
+
+    66% {
+        background-size: calc(100% / 3) 100%, calc(100% / 3) 100%, calc(100% / 3) 0%;
+    }
 }

@@ -1,6 +1,7 @@
 import "./global.css"
 import { ReactNode } from "react"
 
+
 export const metadata = {
     title: "O Ursao",
     description: "O Ursao é um chatbot de IA que responde perguntas sobre a Oktoberlim",
@@ -9,6 +10,8 @@ export const metadata = {
 const RootLayout = ({ children }: { children: ReactNode }) => {
     return (
         <html lang="pt-BR">
+            <head>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" /></head>
             <body>
                 {children}
             </body>
