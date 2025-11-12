@@ -5,8 +5,9 @@ import { createRetrievalChain } from "langchain/chains/retrieval"
 import { createHistoryAwareRetriever } from "langchain/chains/history_aware_retriever"
 import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts"
 import { HumanMessage, AIMessage, SystemMessage} from "@langchain/core/messages"
-import { ContextualCompressionRetriever } from "langchain/retrievers/contextual_compression"
-import { CohereRerank } from "@langchain/cohere"
+// import { ContextualCompressionRetriever } from "langchain/retrievers/contextual_compression"
+// import { BaseRetriever } from "@langchain/core/retrievers";
+// import { CohereRerank } from "@langchain/cohere"
 import { z } from "zod"
 import { zodToJsonSchema } from "zod-to-json-schema"
 
@@ -16,7 +17,7 @@ const {
     ASTRA_DB_NAMESPACE,
     ASTRA_DB_COLLECTION,
     OPENAI_API_KEY,
-    COHERE_API_KEY,
+    // COHERE_API_KEY, // Re-ranking desabilitado temporariamente
 } = process.env;
 
 const MEMORY_CONFIG = {
@@ -191,8 +192,46 @@ async function extractFiltersWithAI(
     return extracted;
 }
 
-//AQUI
-function getFilterDescription()
+// function to build the metadata filter
+function buildMetadataFilter(extraction: FilterExtraction): Record<string, any> | undefined {
+    const filter: Record<string, any> = {};
+    
+    // if there are categories, use $in operator to search for multiple
+    if (extraction.categories.length > 0) {
+        if (extraction.categories.length === 1) {
+            filter.category = extraction.categories[0];
+        } else {
+            filter.category = { $in: extraction.categories };
+        }
+    }
+    
+    // add year filter if present
+    if (extraction.year) {
+        filter.year = extraction.year;
+    }
+    
+    return Object.keys(filter).length > 0 ? filter : undefined;
+}
+
+// function to get the description of the filter
+function getFilterDescription(filter: Record<string, any> | undefined): string {
+    if (!filter) return "[No filters provided - all categories]";
+
+    const parts: string[] = [];
+
+    if (filter.category){
+        if (typeof filter.category === 'string'){
+            parts.push(`categorias: "${filter.category}"`);
+        } else if (filter.category.$in){
+            parts.push(`categorias: [${filter.category.$in.join(", ")}]`);
+        }
+    }
+
+    if (filter.year){
+        parts.push(`ano=${filter.year}`);
+    }
+    return `[${parts.join(" + ")}]`;
+}
 
 
 export async function POST(req: Request){
@@ -200,6 +239,10 @@ export async function POST(req: Request){
         // obtain the prompt from the request
         const {messages} = await req.json();
         const userQuery = messages[messages.length - 1].content;
+
+        console.log(`\n${"=".repeat(70)}`);
+        console.log(`🔍 Nova query: "${userQuery}"`);
+        console.log(`${"=".repeat(70)}`);
 
         //create chatmodel
         const chatModel = new ChatOpenAI({
@@ -212,6 +255,8 @@ export async function POST(req: Request){
         //create embeddings model
         const embeddings = new OpenAIEmbeddings({
             apiKey: OPENAI_API_KEY!,
+            model: "text-embedding-3-small",
+            dimensions: 1024,
         })
 
         //create vector store
@@ -220,74 +265,188 @@ export async function POST(req: Request){
             endpoint: ASTRA_DB_API_ENDPOINT!,
             keyspace: ASTRA_DB_NAMESPACE!,
             collection: ASTRA_DB_COLLECTION!,
+            skipCollectionProvisioning: true,
+            contentKey: "content",
         })
+        await vectorStore.initialize();
+        console.log(`📊 Vector store initialized`);
+
+        const fullChatHistory = messages.slice(0, -1).map((msg: any) => {
+            return msg.role === "user" 
+                ? new HumanMessage(msg.content) 
+                : new AIMessage(msg.content)
+        })
+
+        console.log(`💬 Histórico total: ${fullChatHistory.length} mensagens`);
+
+        const extraction = await extractFiltersWithAI(userQuery, fullChatHistory);
+        const metadataFilter = buildMetadataFilter(extraction);
 
         const baseRetriever = vectorStore.asRetriever({
-            k: 3,
+            k: 5,
+            filter: metadataFilter,
+            searchType: "similarity",
         })
 
-        // O contexto é ESPECÍFICO para esta query, não acumula!
-        const systemPrompt = `Você é um assistente de IA que responde perguntas sobre a Oktoberlim e ajuda a encontrar insights estratégicos sobre a festa, a festa é universitária e da USP de São Carlos feita pela República Berlim. Use as informações do contexto oferecido para responder a pergunta do usuário. Se não houver informações relevantes no contexto, responda usando suas próprias informações e conhecimentos e fale que foi respondido com base em suas próprias informações e conhecimentos.
+        // Re-ranking com Cohere desabilitado temporariamente
+        // devido a incompatibilidade com createHistoryAwareRetriever
+        const retriever = baseRetriever;
+        console.log(`📊 Usando retriever base (sem re-ranking)`);
 
-IMPORTANTE: Você receberá um histórico de conversa. Responda APENAS sobre a ÚLTIMA pergunta do usuário. As mensagens anteriores são apenas para você entender o contexto da conversa. Se a última pergunta referenciar conversas anteriores, você pode usar esse contexto, mas sempre foque em responder apenas a última pergunta.
+        // prompt to reformulate the query
+        const historyAwarePrompt = ChatPromptTemplate.fromMessages([
+            new MessagesPlaceholder("chat_history"),
+            ["user", "{input}"],
+            [
+                "user",
+                `Dada a conversa acima, reformule a última pergunta do usuário em uma consulta de busca otimizada.
 
-        Contexto: ${context}`
+Contexto da análise:
+- Intenção detectada: ${extraction.intent}
+- Categorias relevantes: ${extraction.categories.join(", ") || "nenhuma"}
+- Keywords importantes: ${extraction.keywords.join(", ")}
 
-        // create the langchain messages
-        const langchainMessages: any[] = []
-        langchainMessages.push(["system", systemPrompt])
+Crie uma query de busca que:
+1. Mantenha termos específicos (nomes, datas, locais)
+2. Expanda sinônimos relevantes
+3. Seja clara e focada no que o usuário quer saber
 
-        // Manter histórico de conversa para contexto conversacional
-        // Mas usar apenas a última pergunta para buscar contexto no banco
-        for (let i = 0; i < messages.length - 1; i++){
-            const msg = messages[i];
-            if (msg.role === "user"){
-                langchainMessages.push(["human", msg.content])
-            } else {
-                langchainMessages.push(["ai", msg.content])
-            }
-        }
+A query reformulada deve ser ideal para busca semântica.`
+            ],
+        ])
 
-        langchainMessages.push(["human", userQuery])
+        const limitedChatHistory = limitChatHistory(fullChatHistory, MEMORY_CONFIG);
 
-        // create the stream response
-        const stream = await chatModel.stream(langchainMessages)
-        const encoder = new TextEncoder()
+        const historyAwareRetriever = await createHistoryAwareRetriever({
+            llm: chatModel as any,
+            retriever: retriever as any,
+            rephrasePrompt: historyAwarePrompt as any,
+        })
+
+        // prompt to answer the question
+        const systemPrompt = `Você é um assistente especializado sobre a Oktoberlim, festa universitária da USP São Carlos feita pela República Berlim.
+
+📊 ANÁLISE DA PERGUNTA:
+- Intenção: ${extraction.intent}
+- Categorias: ${extraction.categories.join(", ") || "busca geral"}
+- Ano: ${extraction.year || "não especificado"}
+- Multi-categoria: ${extraction.needsMultipleCategories ? "sim" : "não"}
+
+📚 CONTEXTO RECUPERADO:
+{context}
+
+🎯 INSTRUÇÕES:
+1. Use as informações do contexto como prioridade
+2. Responda focando na intenção identificada: "${extraction.intent}"
+3. Se a pergunta envolve múltiplas categorias, integre as informações de forma coerente
+4. Cite fontes quando relevante (ex: "conforme página 5 do documento X")
+5. Se não houver informações suficientes no contexto, seja honesto e mencione
+
+⚠️ IMPORTANTE:
+- Responda APENAS sobre a ÚLTIMA pergunta do usuário
+- Use o histórico apenas para entender o contexto conversacional
+- Seja específico, objetivo e baseado em dados quando possível`
         
+        const answerPrompt = ChatPromptTemplate.fromMessages([
+            ["system", systemPrompt],
+            new MessagesPlaceholder("chat_history"),
+            ["user", "{input}"],
+        ])
+
+        const documentChain = await createStuffDocumentsChain({
+            llm: chatModel as any,
+            prompt: answerPrompt as any,
+        })
+
+        const retrievalChain = await createRetrievalChain({
+            retriever: historyAwareRetriever as any,
+            combineDocsChain: documentChain as any,
+        })
+
+        console.log(`⚡ Executing retrieval chain...\n`);
+        const stream = await retrievalChain.invoke({
+            input: userQuery,
+            chat_history: limitedChatHistory as any,
+        })
+
+        console.log(`\n🎯 Resultado completo:`, JSON.stringify(stream, null, 2));
+        console.log(`🎯 Tem answer?`, 'answer' in stream);
+        console.log(`🎯 Tem context?`, 'context' in stream);
+
+        // Retornar resposta simples para teste
+        const encoder = new TextEncoder();
+        const response = typeof stream.answer === 'string' ? stream.answer : "Nenhuma resposta foi gerada.";
+        console.log(`📤 Enviando resposta: "${response}"`);
+
+        return new Response(encoder.encode(response), {
+            headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+            },
+        });
+      /*  
+        const encoder = new TextEncoder()
+
         const readableStream = new ReadableStream({
             async start(controller) {
                 try {
-                    let totalChars = 0
+                    let documentsRetrieved = 0;
+                    let fullResponse = ""; // Acumular resposta completa para debug
                     
                     for await (const chunk of stream) {
-                        const content = typeof chunk.content === 'string' ? chunk.content : String(chunk.content)
-                        if (content) {
-                            // Enviar cada character/palavra como um evento separado para real streaming
-                            // Isso faz o frontend atualizar a UI em tempo real
-                            const words = content.split(/(\s+)/) // Split mantendo os espaços
+                        // Log of retrieved documents
+                        if (chunk && chunk.context && documentsRetrieved === 0) {
+                            documentsRetrieved = chunk.context.length;
+                            console.log(`📄 Documents retrieved: ${documentsRetrieved}`);
                             
-                            for (const word of words) {
-                                if (word) {
-                                    totalChars += word.length
-                                    const event = `0:${JSON.stringify(word)}\n`
-                                    controller.enqueue(encoder.encode(event))
-                                    
-                                    // Pequeno delay para simular streaming mais suave
-                                    await new Promise(resolve => setTimeout(resolve, 10))
+                            chunk.context.forEach((doc: any, idx: number) => {
+                                const category = doc.metadata?.category || 'N/A';
+                                const filename = doc.metadata?.filename || 'Unknown';
+                                const page = doc.metadata?.pageNumber || 'N/A';
+                                console.log(`   ${idx + 1}. [${category}] ${filename} - Pág. ${page}`);
+                            });
+                            console.log(``);
+                        }
+                        
+                        if (chunk) {
+                            console.log(`🔍 Chunk keys:`, Object.keys(chunk));
+                            console.log(`🔍 Chunk:`, chunk);
+                        }
+
+                        // Streaming the response
+                        if (chunk && chunk.answer) {
+                            const content = typeof chunk.answer === 'string' 
+                                ? chunk.answer 
+                                : String(chunk.answer)
+                            
+                            if (content) {
+                                console.log(`💬 Chunk recebido: "${content}"`) // chunk log
+                                fullResponse += content;
+                                
+                                const words = content.split(/(\s+)/)
+                                
+                                for (const word of words) {
+                                    if (word) {
+                                        const event = `0:${JSON.stringify(word)}\n`
+                                        controller.enqueue(encoder.encode(event))
+                                        await new Promise(resolve => setTimeout(resolve, 10))
+                                    }
                                 }
                             }
                         }
                     }
                     
+                    console.log(`\n📝 full response: "${fullResponse}"`);
+                    console.log(`📊 total characters: ${fullResponse.length}`);
+                    console.log(`✅ Response sent successfully`);
+                    console.log(`${"=".repeat(70)}\n`);
                     controller.close()
                 } catch (error) {
-                    console.error("❌ Erro no stream:", error)
+                    console.error("❌ Error in stream:", error)
                     controller.error(error)
                 }
             },
         })
 
-        // return the response
         return new Response(readableStream, {
             headers: {
                 'Content-Type': 'text/event-stream; charset=utf-8',
@@ -295,10 +454,14 @@ IMPORTANTE: Você receberá um histórico de conversa. Responda APENAS sobre a �
                 'Connection': 'keep-alive',
             },
         })
+            */
 
     } catch (error) {
-        console.error("Erro na API:", error)
-        return new Response(JSON.stringify({ error: "Erro ao processar requisição" }), {
+        console.error("❌ Error in API:", error)
+        return new Response(JSON.stringify({ 
+            error: "Error processing request",
+            details: error instanceof Error ? error.message : String(error)
+        }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
         })
