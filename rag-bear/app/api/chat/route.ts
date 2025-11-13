@@ -26,6 +26,10 @@ const MEMORY_CONFIG = {
     MIN_MESSAGES: 2,
 };
 
+const METADATA_CONFIG = {
+    HAS_YEAR_FIELD: true,
+};
+
 // schema to extract filters
 const FilterExtractionSchema = z.object({
     categories: z.array(z.enum([       "geral",
@@ -207,32 +211,17 @@ function buildMetadataFilter(extraction: FilterExtraction): Record<string, any> 
     
     // add year filter if present
     if (extraction.year) {
-        filter.year = extraction.year;
+        if (METADATA_CONFIG.HAS_YEAR_FIELD) {
+            // Testar tanto string quanto number (por segurança)
+            filter.$or = [
+                { year: extraction.year },
+                { year: parseInt(extraction.year) }
+            ];
+        }
     }
     
     return Object.keys(filter).length > 0 ? filter : undefined;
 }
-
-// function to get the description of the filter
-function getFilterDescription(filter: Record<string, any> | undefined): string {
-    if (!filter) return "[No filters provided - all categories]";
-
-    const parts: string[] = [];
-
-    if (filter.category){
-        if (typeof filter.category === 'string'){
-            parts.push(`categorias: "${filter.category}"`);
-        } else if (filter.category.$in){
-            parts.push(`categorias: [${filter.category.$in.join(", ")}]`);
-        }
-    }
-
-    if (filter.year){
-        parts.push(`ano=${filter.year}`);
-    }
-    return `[${parts.join(" + ")}]`;
-}
-
 
 export async function POST(req: Request){
     try {
@@ -288,8 +277,6 @@ export async function POST(req: Request){
             searchType: "similarity",
         })
 
-        // Re-ranking com Cohere desabilitado temporariamente
-        // devido a incompatibilidade com createHistoryAwareRetriever
         const retriever = baseRetriever;
         console.log(`📊 Usando retriever base (sem re-ranking)`);
 
@@ -305,10 +292,17 @@ Contexto da análise:
 - Intenção detectada: ${extraction.intent}
 - Categorias relevantes: ${extraction.categories.join(", ") || "nenhuma"}
 - Keywords importantes: ${extraction.keywords.join(", ")}
+${extraction.year && !METADATA_CONFIG.HAS_YEAR_FIELD 
+    ? `\n⚠️ ANO OBRIGATÓRIO: ${extraction.year} - DEVE aparecer explicitamente na query reformulada (será usado na busca semântica)!` 
+    : extraction.year 
+    ? `\n- Ano: ${extraction.year} (já filtrado no banco de dados)` 
+    : ''}
 
 Crie uma query de busca que:
 1. Mantenha termos específicos (nomes, datas, locais)
-2. Expanda sinônimos relevantes
+${extraction.year && !METADATA_CONFIG.HAS_YEAR_FIELD 
+    ? `2. **CRÍTICO**: Inclua explicitamente o ano "${extraction.year}" na query reformulada` 
+    : '2. Expanda sinônimos relevantes'}
 3. Seja clara e focada no que o usuário quer saber
 
 A query reformulada deve ser ideal para busca semântica.`
@@ -364,33 +358,19 @@ A query reformulada deve ser ideal para busca semântica.`
         })
 
         console.log(`⚡ Executing retrieval chain...\n`);
-        const stream = await retrievalChain.invoke({
+        const stream = await retrievalChain.stream({
             input: userQuery,
             chat_history: limitedChatHistory as any,
         })
 
-        console.log(`\n🎯 Resultado completo:`, JSON.stringify(stream, null, 2));
-        console.log(`🎯 Tem answer?`, 'answer' in stream);
-        console.log(`🎯 Tem context?`, 'context' in stream);
-
         // Retornar resposta simples para teste
         const encoder = new TextEncoder();
-        const response = typeof stream.answer === 'string' ? stream.answer : "Nenhuma resposta foi gerada.";
-        console.log(`📤 Enviando resposta: "${response}"`);
-
-        return new Response(encoder.encode(response), {
-            headers: {
-                'Content-Type': 'text/plain; charset=utf-8',
-            },
-        });
-      /*  
-        const encoder = new TextEncoder()
 
         const readableStream = new ReadableStream({
             async start(controller) {
                 try {
                     let documentsRetrieved = 0;
-                    let fullResponse = ""; // Acumular resposta completa para debug
+                    let fullResponse = "";
                     
                     for await (const chunk of stream) {
                         // Log of retrieved documents
@@ -406,11 +386,6 @@ A query reformulada deve ser ideal para busca semântica.`
                             });
                             console.log(``);
                         }
-                        
-                        if (chunk) {
-                            console.log(`🔍 Chunk keys:`, Object.keys(chunk));
-                            console.log(`🔍 Chunk:`, chunk);
-                        }
 
                         // Streaming the response
                         if (chunk && chunk.answer) {
@@ -419,16 +394,14 @@ A query reformulada deve ser ideal para busca semântica.`
                                 : String(chunk.answer)
                             
                             if (content) {
-                                console.log(`💬 Chunk recebido: "${content}"`) // chunk log
                                 fullResponse += content;
-                                
-                                const words = content.split(/(\s+)/)
-                                
+
+                                const words = content.split(/(\s+)/);
                                 for (const word of words) {
                                     if (word) {
                                         const event = `0:${JSON.stringify(word)}\n`
                                         controller.enqueue(encoder.encode(event))
-                                        await new Promise(resolve => setTimeout(resolve, 10))
+                                        await new Promise(resolve => setTimeout(resolve, 3))
                                     }
                                 }
                             }
@@ -454,7 +427,6 @@ A query reformulada deve ser ideal para busca semântica.`
                 'Connection': 'keep-alive',
             },
         })
-            */
 
     } catch (error) {
         console.error("❌ Error in API:", error)

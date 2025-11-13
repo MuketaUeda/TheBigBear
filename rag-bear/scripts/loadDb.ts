@@ -1,7 +1,7 @@
 import * as dotenv from "dotenv";
 import { DataAPIClient } from "@datastax/astra-db-ts";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import path from "path";
 import fs from "fs";
 
@@ -25,6 +25,7 @@ interface DocumentMetadata {
   filename: string;
   category: string;
   description: string;
+  year: number;
   tags: string[];
 }
 
@@ -48,12 +49,16 @@ function getAllPdfFiles(): DocumentMetadata[] {
           console.log(`📁 Scanning category: ${file.name}`);
           scanDirectory(filePath, file.name.toLowerCase());
         } else if (file.name.toLowerCase().endsWith('.pdf')) {
+          // get the year from the file name
+          const yearMatch = file.name.match(/\b(20\d{2})\b/);
+          const year = yearMatch ? parseInt(yearMatch[1]) : new Date().getFullYear();
           //if its a pdf file
           bearData.push({
             path: filePath,
             filename: file.name,
             category: category,
             description: file.name.replace('.pdf', ''),
+            year: year,
             tags: [category]
           });
         }
@@ -172,6 +177,7 @@ async function loadDocuments() {
           filename: item.filename,
           documentTitle: chunk.metadata?.pdf?.info?.Title || item.description,
           category: item.category,
+          year: item.year,
           description: item.description,
           tags: item.tags,
           pageNumber: chunk.metadata?.loc?.pageNumber || null,
