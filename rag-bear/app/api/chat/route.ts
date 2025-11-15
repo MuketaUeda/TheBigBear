@@ -57,7 +57,7 @@ function limitChatHistory(
 ): Array<HumanMessage | AIMessage> {
     if (chatHistory.length === 0) return [];
 
-    // Pegar últimas MAX_MESSAGES mensagens
+    // Get the last MAX_MESSAGES messages
     let candidates = chatHistory.slice(-config.MAX_MESSAGES);
 
     // Calcular total de caracteres
@@ -66,7 +66,7 @@ function limitChatHistory(
         return sum + content.length;
     }, 0);
 
-    // Remover mensagens antigas até ficar dentro do limite
+    // Remove messages until the total characters is within the limit
     while (totalChars > config.MAX_CHARS && candidates.length > config.MIN_MESSAGES) {
         candidates.shift();
         totalChars = candidates.reduce((sum, msg) => {
@@ -116,29 +116,34 @@ async function extractFiltersWithAI(
     5. Resuma a intenção da pergunta
     
     EXEMPLOS:
-    
+
     Pergunta: "Quanto custou a decoração da festa?"
-    → categories: ["decoracao", "financeiro"]
-    → needsMultipleCategories: true
-    → intent: "Saber o custo da decoração"
+    →
+    categories "decoracao" "financeiro"
+    needsMultipleCategories true
+    intent "Saber o custo da decoração"
     
     Pergunta: "Quem foram os artistas de 2023?"
-    → categories: ["atracoes"]
-    → year: "2023"
-    → intent: "Listar artistas de 2023"
+    →
+    categories "atracoes"
+    year "2023"
+    intent "Listar artistas de 2023"
 
     Pergunta: "Preciso dos documentos do alvará"
-    → categories: ["liberacao"]
-    → intent: "Obter documentação de alvará"
+    →
+    categories "liberacao"
+    intent "Obter documentação de alvará"
 
     Pergunta: "Como foi a campanha de marketing?"
-    → categories: ["marketing"]
-    → intent: "Entender estratégia de marketing"
+    →
+    categories "marketing"
+    intent "Entender estratégia de marketing"
 
     Pergunta: "Qual foi o gasto total com estrutura e som?"
-    → categories: ["estruturas", "financeiro"]
-    → needsMultipleCategories: true
-    → intent: "Saber custo de estrutura e som"`;
+    →
+    categories "estruturas" "financeiro"
+    needsMultipleCategories true
+    intent "Saber custo de estrutura e som"`;
 
     // create the messages
     const messages: Array<SystemMessage | HumanMessage | AIMessage> = [
@@ -278,7 +283,6 @@ export async function POST(req: Request){
         })
 
         const retriever = baseRetriever;
-        console.log(`📊 Usando retriever base (sem re-ranking)`);
 
         // prompt to reformulate the query
         const historyAwarePrompt = ChatPromptTemplate.fromMessages([
@@ -287,27 +291,29 @@ export async function POST(req: Request){
             [
                 "user",
                 `Dada a conversa acima, reformule a última pergunta do usuário em uma consulta de busca otimizada.
-
-Contexto da análise:
-- Intenção detectada: ${extraction.intent}
-- Categorias relevantes: ${extraction.categories.join(", ") || "nenhuma"}
-- Keywords importantes: ${extraction.keywords.join(", ")}
-${extraction.year && !METADATA_CONFIG.HAS_YEAR_FIELD 
-    ? `\n⚠️ ANO OBRIGATÓRIO: ${extraction.year} - DEVE aparecer explicitamente na query reformulada (será usado na busca semântica)!` 
-    : extraction.year 
-    ? `\n- Ano: ${extraction.year} (já filtrado no banco de dados)` 
-    : ''}
-
-Crie uma query de busca que:
-1. Mantenha termos específicos (nomes, datas, locais)
-${extraction.year && !METADATA_CONFIG.HAS_YEAR_FIELD 
-    ? `2. **CRÍTICO**: Inclua explicitamente o ano "${extraction.year}" na query reformulada` 
-    : '2. Expanda sinônimos relevantes'}
-3. Seja clara e focada no que o usuário quer saber
-
-A query reformulada deve ser ideal para busca semântica.`
+        
+        Contexto da análise:
+        intent "${extraction.intent}"
+        categories ${extraction.categories.length > 0 ? extraction.categories.map(c => `"${c}"`).join(" ") : "nenhuma"}
+        keywords ${extraction.keywords.length > 0 ? extraction.keywords.map(k => `"${k}"`).join(" ") : "nenhuma"}
+        ${extraction.year ? `year "${extraction.year}"` : ''}
+        
+        ${extraction.year && !METADATA_CONFIG.HAS_YEAR_FIELD 
+            ? `\n⚠️ ANO OBRIGATÓRIO: ${extraction.year} - DEVE aparecer explicitamente na query reformulada (será usado na busca semântica)!` 
+            : extraction.year 
+            ? `\n(O ano ${extraction.year} já foi filtrado no banco de dados)` 
+            : ''}
+        
+        Crie uma query de busca que:
+        1. Mantenha termos específicos (nomes, datas, locais)
+        ${extraction.year && !METADATA_CONFIG.HAS_YEAR_FIELD 
+            ? `2. **CRÍTICO**: Inclua explicitamente o ano "${extraction.year}" na query reformulada` 
+            : '2. Expanda sinônimos relevantes'}
+        3. Seja clara e focada no que o usuário quer saber
+        
+        A query reformulada deve ser ideal para busca semântica.`
             ],
-        ])
+        ]);
 
         const limitedChatHistory = limitChatHistory(fullChatHistory, MEMORY_CONFIG);
 
@@ -318,23 +324,32 @@ A query reformulada deve ser ideal para busca semântica.`
         })
 
         // prompt to answer the question
-        const systemPrompt = `Você é um assistente especializado sobre a Oktoberlim, festa universitária da USP São Carlos feita pela República Berlim.
+        const systemPrompt = `Você é um assistente especializado sobre a Oktoberlim, festa universitária **OPENBAR** da USP São Carlos feita pela República Berlim.
 
-📊 ANÁLISE DA PERGUNTA:
-- Intenção: ${extraction.intent}
-- Categorias: ${extraction.categories.join(", ") || "busca geral"}
-- Ano: ${extraction.year || "não especificado"}
-- Multi-categoria: ${extraction.needsMultipleCategories ? "sim" : "não"}
+📊 ANÁLISE DA PERGUNTA (TOON):
+intent "${extraction.intent}"
+categories ${extraction.categories.length > 0 ? extraction.categories.map(c => `"${c}"`).join(" ") : "busca_geral"}
+year ${extraction.year ? `"${extraction.year}"` : "nao_especificado"}
+multiCategoria ${extraction.needsMultipleCategories}
 
 📚 CONTEXTO RECUPERADO:
 {context}
 
+---
+⚠️ REGRA MESTRA INVIOLÁVEL: A OKTOBERLIM É 100% OPEN BAR.
+Este fato é **mais importante** que qualquer informação no CONTEXTO RECUPERADO.
+- **NÃO EXISTE** venda de bebidas.
+- **NÃO EXISTE** combos, fichas, caixas ou filas de pagamento para bebidas.
+- Se o {context} sugerir ou mencionar algo sobre "pagamento de bebida", "comprar combo" ou "preço de cerveja", **IGNORE ESSA PARTE** do contexto, pois ela está errada.
+- Se o usuário perguntar sobre preços de bebidas, a resposta deve ser: "Não há venda de bebidas, pois a festa é open bar."
+---
+
 🎯 INSTRUÇÕES:
-1. Use as informações do contexto como prioridade
+1. Use as informações do {context} como prioridade, **A MENOS** que contradigam a REGRA MESTRA.
 2. Responda focando na intenção identificada: "${extraction.intent}"
-3. Se a pergunta envolve múltiplas categorias, integre as informações de forma coerente
+3. Se a pergunta envolve múltiplas categorias, integre as informações de forma coerente.
 4. Cite fontes quando relevante (ex: "conforme página 5 do documento X")
-5. Se não houver informações suficientes no contexto, seja honesto e mencione
+5. Se não houver informações suficientes no contexto, seja honesto e mencione.
 
 ⚠️ IMPORTANTE:
 - Responda APENAS sobre a ÚLTIMA pergunta do usuário
